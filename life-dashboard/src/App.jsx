@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   LineChart, Line, BarChart, Bar, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -59,7 +59,7 @@ function parseCSV(csvText) {
     const obj = {};
     headers.forEach((h, i) => { obj[h] = (vals[i] || "").trim().replace(/^"|"$/g, ""); });
     const date = obj["Date"] || "";
-    if (!date) return null;
+    if (!date || !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) return null;
     return {
       date,
       dow:          obj["Day of the week"] || "",
@@ -77,7 +77,7 @@ function parseCSV(csvText) {
       bed_made:     parseInt(obj["Did you make your bed?"]) || 0,
       social:       parseInt(obj["Did you upload to Social Media?"]) || 0,
       gaming:       parseDuration(obj["Time playing video games:"]),
-      ppl:          obj["PPL?"] || "",
+      ppl:          ["Push", "Pull", "Legs", ""].includes(obj["PPL?"] || "") ? (obj["PPL?"] || "") : "",
       run:          parseFloat(obj["Run distance (x.xx miles)"]) || 0,
       gymTime:      parseDuration(obj["Time gymming:"]),
       energy:       parseInt(obj["Energy rating:"]) || 0,
@@ -95,6 +95,116 @@ function mergeRecords(existing, incoming) {
 // ─── Stats helpers ───────────────────────────────────────────────────────────
 const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 const pct = arr => arr.length ? Math.round(arr.filter(Boolean).length / arr.length * 100) : 0;
+const diff = (a, b) => b === 0 ? null : Math.round(((a - b) / b) * 100);
+const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function monthKey(dateStr) {
+  const [m, , y] = dateStr.split("/");
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+function quarterKey(dateStr) {
+  const [m, , y] = dateStr.split("/");
+  return `${y}-Q${Math.ceil(parseInt(m) / 3)}`;
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split("-");
+  return `${MONTH_FULL[parseInt(m) - 1]} ${y}`;
+}
+
+function prevMonthKey(key) {
+  const [y, m] = key.split("-").map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function quarterLabel(key) {
+  return key.replace("-", " ");
+}
+
+function prevQuarterKey(key) {
+  const [y, q] = key.split("-Q").map(Number);
+  return q === 1 ? `${y - 1}-Q4` : `${y}-Q${q - 1}`;
+}
+
+function generateInsights(data) {
+  if (!data.length) return [];
+
+  const insights = [];
+  const fmtDate = d => {
+    const [m, day] = d.date.split("/");
+    return `${MONTH_FULL[parseInt(m) - 1]} ${day}`;
+  };
+
+  const happiest = data.reduce((a, b) => b.happiness > a.happiness ? b : a);
+  const saddest = data.reduce((a, b) => b.happiness < a.happiness ? b : a);
+  const mostSlept = data.reduce((a, b) => b.sleep > a.sleep ? b : a);
+  const leastSlept = data.reduce((a, b) => b.sleep < a.sleep ? b : a);
+  const mostSteps = data.reduce((a, b) => b.steps > a.steps ? b : a);
+  const mostProd = data.reduce((a, b) => b.productivity > a.productivity ? b : a);
+
+  insights.push({ icon: "😊", color: "#f5c842", text: `${fmtDate(happiest)} was your happiest day (${happiest.happiness}/6)` });
+  if (saddest.happiness !== happiest.happiness) {
+    insights.push({ icon: "😔", color: "#ff6b6b", text: `${fmtDate(saddest)} was your lowest mood day (${saddest.happiness}/6)` });
+  }
+  insights.push({ icon: "🌙", color: "#cc88ff", text: `Best sleep: ${fmtDate(mostSlept)} with ${mostSlept.sleep.toFixed(1)}h` });
+  insights.push({ icon: "😴", color: "#ff6b6b", text: `Least sleep: ${fmtDate(leastSlept)} with ${leastSlept.sleep.toFixed(1)}h` });
+  insights.push({ icon: "👟", color: "#4fd1c5", text: `Most steps: ${fmtDate(mostSteps)} with ${mostSteps.steps.toLocaleString()} steps` });
+  insights.push({ icon: "💪", color: "#6bcb77", text: `Most productive: ${fmtDate(mostProd)} (${mostProd.productivity}/6)` });
+
+  let maxActiveStreak = 0;
+  let cur = 0;
+  data.forEach(d => {
+    cur = d.active ? cur + 1 : 0;
+    maxActiveStreak = Math.max(maxActiveStreak, cur);
+  });
+  if (maxActiveStreak > 1) insights.push({ icon: "🏃", color: "#6bcb77", text: `Longest active streak: ${maxActiveStreak} days in a row` });
+
+  const gymDays = data.filter(d => d.gymTime > 0).length;
+  if (gymDays > 0) insights.push({ icon: "🏋️", color: "#ff6b6b", text: `Hit the gym ${gymDays} times — that's ${Math.round(gymDays / data.length * 100)}% of days` });
+
+  const runTotal = data.reduce((a, d) => a + d.run, 0);
+  if (runTotal > 0) insights.push({ icon: "🏃", color: "#6bcb77", text: `Ran ${runTotal.toFixed(1)} miles total` });
+
+  const highStress = data.filter(d => d.stress >= 4).length;
+  if (highStress > 0) insights.push({ icon: "😤", color: "#ff6b6b", text: `${highStress} high-stress day${highStress > 1 ? "s" : ""} (stress ≥ 4/6)` });
+
+  const avgScreen = avg(data.map(d => d.screentime));
+  insights.push({ icon: "📱", color: "#888899", text: `Average screen time: ${avgScreen.toFixed(1)}h/day` });
+
+  const tenK = data.filter(d => d.steps >= 10000).length;
+  if (tenK > 0) insights.push({ icon: "⭐", color: "#f5c842", text: `Hit 10k steps on ${tenK} day${tenK > 1 ? "s" : ""}` });
+
+  const waterGoal = data.filter(d => d.water >= 2500).length;
+  insights.push({ icon: "💧", color: "#4fd1c5", text: `Met hydration goal (2500mL) on ${waterGoal} of ${data.length} days` });
+
+  return insights;
+}
+
+function generateComparisons(curr, prev) {
+  if (!curr.length || !prev.length) return [];
+
+  const metrics = [
+    { key: "steps", label: "Daily steps", icon: "👟", fmt: v => Math.round(v).toLocaleString(), higherBetter: true },
+    { key: "sleep", label: "Sleep per night", icon: "🌙", fmt: v => v.toFixed(1), higherBetter: true },
+    { key: "happiness", label: "Mood", icon: "😊", fmt: v => v.toFixed(1) + "/6", higherBetter: true },
+    { key: "energy", label: "Energy", icon: "⚡", fmt: v => v.toFixed(1) + "/6", higherBetter: true },
+    { key: "stress", label: "Stress", icon: "😤", fmt: v => v.toFixed(1) + "/6", higherBetter: false },
+    { key: "water", label: "Water intake", icon: "💧", fmt: v => Math.round(v).toLocaleString(), higherBetter: true },
+    { key: "screentime", label: "Screen time", icon: "📱", fmt: v => v.toFixed(1), higherBetter: false },
+    { key: "productivity", label: "Productivity", icon: "💼", fmt: v => v.toFixed(1) + "/6", higherBetter: true },
+    { key: "active", label: "Active days", icon: "🏃", fmt: v => Math.round(v) + "%", higherBetter: true, isPct: true },
+  ];
+
+  return metrics.map(m => {
+    const currVal = m.isPct ? pct(curr.map(d => d[m.key])) : avg(curr.map(d => d[m.key]).filter(v => v > 0 || m.key === "active"));
+    const prevVal = m.isPct ? pct(prev.map(d => d[m.key])) : avg(prev.map(d => d[m.key]).filter(v => v > 0 || m.key === "active"));
+    const change = diff(currVal, prevVal);
+    const better = change === null ? null : (m.higherBetter ? change > 0 : change < 0);
+    return { ...m, currVal, prevVal, change, better };
+  });
+}
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const P = {
@@ -104,7 +214,7 @@ const P = {
   text: "#e2e2f0", subtext: "#888899",
 };
 
-const TABS = ["Overview", "Sleep", "Wellness", "Habits", "Fitness"];
+const TABS = ["Overview", "Sleep", "Wellness", "Habits", "Fitness", "Period"];
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -122,12 +232,17 @@ const Tip = ({ active, payload, label, unit = "" }) => {
   );
 };
 
-function StatCard({ label, value, sub, color = P.accent, icon }) {
+function StatCard({ label, value, sub, color = P.accent, icon, delta = null }) {
   return (
     <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: "16px 20px", flex: 1, minWidth: 130 }}>
       <div style={{ fontSize: 11, color: P.subtext, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>{icon} {label}</div>
       <div style={{ fontSize: 26, fontWeight: 700, color, fontFamily: "'DM Serif Display',serif", lineHeight: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: P.subtext, marginTop: 4 }}>{sub}</div>}
+      {delta !== null && (
+        <div style={{ fontSize: 11, marginTop: 4, color: delta > 0 ? P.sage : delta < 0 ? P.coral : P.subtext }}>
+          {delta > 0 ? "▲" : "▼"} {Math.abs(delta)}% vs prior period
+        </div>
+      )}
     </div>
   );
 }
@@ -179,6 +294,233 @@ function EmptyState({ onUpload, dragOver, onDragOver, onDragLeave, onDrop, fileI
   );
 }
 
+function PeriodTab({ allTime }) {
+  const [mode, setMode] = useState("month");
+  const [selected, setSelected] = useState(null);
+
+  const periods = useMemo(() => {
+    const keys = new Set();
+    allTime.forEach(d => keys.add(mode === "month" ? monthKey(d.date) : quarterKey(d.date)));
+    return Array.from(keys).sort();
+  }, [allTime, mode]);
+
+  useEffect(() => {
+    if (periods.length) setSelected(periods[periods.length - 1]);
+  }, [periods]);
+
+  const currData = useMemo(() => {
+    if (!selected) return [];
+    return allTime.filter(d => (mode === "month" ? monthKey(d.date) : quarterKey(d.date)) === selected);
+  }, [allTime, selected, mode]);
+
+  const prevKey = selected ? (mode === "month" ? prevMonthKey(selected) : prevQuarterKey(selected)) : null;
+  const prevData = useMemo(() => {
+    if (!prevKey) return [];
+    return allTime.filter(d => (mode === "month" ? monthKey(d.date) : quarterKey(d.date)) === prevKey);
+  }, [allTime, prevKey, mode]);
+
+  const hasPrev = prevData.length > 0;
+  const insights = useMemo(() => generateInsights(currData), [currData]);
+  const comps = useMemo(() => generateComparisons(currData, prevData), [currData, prevData]);
+  const chartData = currData.map(d => ({ ...d, label: d.date.slice(0, 5) }));
+  const xInterval = Math.max(1, Math.floor(chartData.length / 10));
+  const periodLabel = selected ? (mode === "month" ? monthLabel(selected) : quarterLabel(selected)) : "";
+  const prevLabel = prevKey ? (mode === "month" ? monthLabel(prevKey) : quarterLabel(prevKey)) : "";
+
+  if (!allTime.length) {
+    return <div style={{ color: P.subtext, textAlign: "center", paddingTop: 60 }}>Upload data to see period analysis.</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", background: P.panel, border: `1px solid ${P.border}`, borderRadius: 8, padding: 3, gap: 2 }}>
+          {["month", "quarter"].map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              style={{
+                background: mode === m ? P.accent : "none",
+                color: mode === m ? P.bg : P.subtext,
+                border: "none",
+                borderRadius: 6,
+                padding: "5px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s",
+                fontFamily: "'DM Sans',sans-serif",
+              }}>
+              {m === "month" ? "Monthly" : "Quarterly"}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={selected || ""}
+          onChange={e => setSelected(e.target.value)}
+          style={{
+            background: P.panel,
+            border: `1px solid ${P.border}`,
+            borderRadius: 8,
+            color: P.text,
+            padding: "6px 12px",
+            fontSize: 13,
+            cursor: "pointer",
+            fontFamily: "'DM Sans',sans-serif",
+          }}>
+          {periods.map(p => (
+            <option key={p} value={p}>{mode === "month" ? monthLabel(p) : quarterLabel(p)}</option>
+          ))}
+        </select>
+
+        <div style={{ fontSize: 12, color: P.subtext }}>
+          {currData.length} days of data
+          {hasPrev && <span style={{ color: P.muted }}> · comparing to {prevLabel}</span>}
+        </div>
+      </div>
+
+      {!currData.length ? (
+        <div style={{ color: P.subtext, textAlign: "center", padding: 40 }}>No data for this period.</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <StatCard
+              label="Avg Mood"
+              value={avg(currData.map(d => d.happiness)).toFixed(1) + "/6"}
+              sub={hasPrev ? `Prev: ${avg(prevData.map(d => d.happiness)).toFixed(1)}` : undefined}
+              delta={hasPrev ? diff(avg(currData.map(d => d.happiness)), avg(prevData.map(d => d.happiness))) : null}
+              color={P.gold}
+              icon="😊"
+            />
+            <StatCard
+              label="Avg Sleep"
+              value={avg(currData.map(d => d.sleep)).toFixed(1) + "h"}
+              sub={hasPrev ? `Prev: ${avg(prevData.map(d => d.sleep)).toFixed(1)}h` : undefined}
+              delta={hasPrev ? diff(avg(currData.map(d => d.sleep)), avg(prevData.map(d => d.sleep))) : null}
+              color={P.accent}
+              icon="🌙"
+            />
+            <StatCard
+              label="Avg Steps"
+              value={Math.round(avg(currData.map(d => d.steps))).toLocaleString()}
+              sub={hasPrev ? `Prev: ${Math.round(avg(prevData.map(d => d.steps))).toLocaleString()}` : undefined}
+              delta={hasPrev ? diff(avg(currData.map(d => d.steps)), avg(prevData.map(d => d.steps))) : null}
+              color={P.teal}
+              icon="👟"
+            />
+            <StatCard
+              label="Active Days"
+              value={`${pct(currData.map(d => d.active))}%`}
+              sub={hasPrev ? `Prev: ${pct(prevData.map(d => d.active))}%` : undefined}
+              delta={hasPrev ? diff(pct(currData.map(d => d.active)), pct(prevData.map(d => d.active))) : null}
+              color={P.sage}
+              icon="🏃"
+            />
+          </div>
+
+          <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, color: P.subtext, textTransform: "uppercase", marginBottom: 12 }}>
+              Mood, Energy & Sleep — {periodLabel}
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                <XAxis dataKey="label" tick={{ fill: P.subtext, fontSize: 10 }} interval={xInterval} />
+                <YAxis tick={{ fill: P.subtext, fontSize: 10 }} />
+                <Tooltip content={<Tip />} />
+                <Line type="monotone" dataKey="happiness" stroke={P.gold} dot={false} strokeWidth={2} name="Mood" />
+                <Line type="monotone" dataKey="energy" stroke={P.teal} dot={false} strokeWidth={2} name="Energy" strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="sleep" stroke={P.accent} dot={false} strokeWidth={2} name="Sleep (h)" strokeDasharray="2 3" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, color: P.subtext, textTransform: "uppercase", marginBottom: 12 }}>Daily Steps</div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                <XAxis dataKey="label" tick={{ fill: P.subtext, fontSize: 10 }} interval={xInterval} />
+                <YAxis tick={{ fill: P.subtext, fontSize: 10 }} />
+                <Tooltip content={<Tip unit=" steps" />} />
+                <ReferenceLine y={10000} stroke={P.gold} strokeDasharray="4 2" label={{ value: "10k", fill: P.gold, fontSize: 10 }} />
+                <Bar dataKey="steps" name="Steps" radius={[2, 2, 0, 0]}>
+                  {chartData.map((d, i) => <Cell key={i} fill={d.steps >= 10000 ? P.teal : d.steps >= 5000 ? P.accent : P.muted} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: 20, flex: "1 1 300px" }}>
+              <div style={{ fontSize: 11, letterSpacing: 2, color: P.subtext, textTransform: "uppercase", marginBottom: 16 }}>
+                ✨ {periodLabel} Highlights
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {insights.map((ins, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", background: "#0d0d18", borderRadius: 8, border: `1px solid ${P.border}` }}>
+                    <span style={{ fontSize: 16, lineHeight: 1.4 }}>{ins.icon}</span>
+                    <span style={{ fontSize: 12, color: ins.color, lineHeight: 1.5 }}>{ins.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: 20, flex: "1 1 300px" }}>
+              <div style={{ fontSize: 11, letterSpacing: 2, color: P.subtext, textTransform: "uppercase", marginBottom: 16 }}>
+                {hasPrev ? `📊 ${periodLabel} vs ${prevLabel}` : "📊 Comparison"}
+              </div>
+              {!hasPrev ? (
+                <div style={{ color: P.muted, fontSize: 13, paddingTop: 8 }}>
+                  No data for {prevLabel || "the previous period"} — upload more months to unlock comparisons.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {comps.map((c, i) => {
+                    const arrow = c.change === null ? "—" : c.change > 0 ? "▲" : c.change < 0 ? "▼" : "=";
+                    const color = c.change === null || c.change === 0 ? P.subtext : c.better ? P.sage : P.coral;
+                    const absPct = c.change === null ? "" : `${Math.abs(c.change)}%`;
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#0d0d18", borderRadius: 8, border: `1px solid ${P.border}` }}>
+                        <span style={{ fontSize: 14 }}>{c.icon}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, color: P.subtext }}>{c.label}</div>
+                          <div style={{ fontSize: 12, color: P.text, marginTop: 2 }}>
+                            {c.fmt(c.currVal)} <span style={{ color: P.muted }}>vs {c.fmt(c.prevVal)}</span>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color }}>{arrow} {absPct}</span>
+                          {c.change !== null && c.change !== 0 && (
+                            <div style={{ fontSize: 10, color, marginTop: 2 }}>{c.better ? "improved" : "declined"}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, color: P.subtext, textTransform: "uppercase", marginBottom: 16 }}>
+              Habit Completion — {periodLabel}
+            </div>
+            <HabitRow label="photo" data={currData} color={P.gold} />
+            <HabitRow label="bed_made" data={currData} color={P.teal} />
+            <HabitRow label="journal" data={currData} color={P.accent} />
+            <HabitRow label="leetcode" data={currData} color={P.sage} />
+            <HabitRow label="active" data={currData} color={P.coral} />
+            <HabitRow label="social" data={currData} color="#a78bfa" />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState("Overview");
@@ -214,12 +556,18 @@ export default function App() {
   const handleFile = useCallback((file) => {
     if (!file) return;
     if (!file.name.endsWith(".csv")) { showToast("⚠️ Please upload a .csv file", "error"); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast("⚠️ File too large (max 10MB)", "error"); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const incoming = parseCSV(e.target.result);
         if (!incoming.length) { showToast("⚠️ No valid rows found in this CSV", "error"); return; }
-        setRecords(prev => mergeRecords(prev, incoming));
+        if (incoming.length > 2000) { showToast("⚠️ Too many rows (max 2000)", "error"); return; }
+        setRecords(prev => {
+          const merged = mergeRecords(prev, incoming);
+          if (merged.length > 2000) { showToast("⚠️ Total records would exceed 2000", "error"); return prev; }
+          return merged;
+        });
         setUploadedFiles(prev => {
           const entry = { name: file.name, rows: incoming.length, date: new Date().toLocaleDateString() };
           return prev.find(f => f.name === file.name)
@@ -288,6 +636,7 @@ export default function App() {
           font-family: 'DM Sans',sans-serif; font-size: 13px; font-weight: 500; transition: all 0.2s; }
         .tab-btn:hover { background: #1e1e2e; }
         .upload-zone:hover { border-color: #cc88ff !important; background: #1a1a2e !important; }
+        select option { background: #111118; }
       `}</style>
 
       {/* Toast */}
@@ -637,8 +986,10 @@ export default function App() {
             </div>
           )}
 
+          {tab === "Period" && <PeriodTab allTime={allTime} />}
+
           <div style={{ marginTop: 32, textAlign: "center", fontSize: 11, color: P.muted }}>
-            © 2026 Matthew Han · data stored locally in your browser
+            {totalDays} days · {uploadedFiles.length} file{uploadedFiles.length !== 1 ? "s" : ""} · data stored locally in your browser
           </div>
         </>
       )}
