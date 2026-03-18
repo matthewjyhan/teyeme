@@ -60,5 +60,14 @@ Open http://localhost:5173 in your browser.
 Every month, export your Google Form responses as CSV (Responses sheet → Download as CSV)
 and upload it to the dashboard. It will automatically merge with your existing data.
 
+---
+
+## Future Features
+
+- Give insights and recommendations based on past trends
+- Predict behavior with AI
+
+---
+
 
 Built March 3rd, 2026
