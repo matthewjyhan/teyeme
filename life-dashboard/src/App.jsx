@@ -266,30 +266,210 @@ function HabitRow({ label, data, color }) {
   );
 }
 
-function EmptyState({ onUpload, dragOver, onDragOver, onDragLeave, onDrop, fileInputRef }) {
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function Modal({ title, onClose, children }) {
+  // Close on backdrop click or Escape key
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: 24, textAlign: "center" }}>
-      <div style={{ fontSize: 56 }}>📊</div>
-      <div>
-        <div style={{ fontSize: 24, fontFamily: "'DM Serif Display',serif", color: P.text, marginBottom: 8 }}>No data yet</div>
-        <div style={{ fontSize: 14, color: P.subtext, maxWidth: 360, lineHeight: 1.6 }}>
-          Upload your Google Form CSV export to get started.<br />
-          Your data is stored privately in your browser — nothing is sent anywhere.
+    <div onClick={onClose} style={{
+      position:"fixed",inset:0,zIndex:1000,
+      background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",
+      display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:"#13131f",border:`1px solid ${P.border}`,borderRadius:16,
+        width:"100%",maxWidth:560,maxHeight:"78vh",
+        display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.6)",
+      }}>
+        {/* Fixed header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 24px 16px",borderBottom:`1px solid ${P.border}`,flexShrink:0}}>
+          <div style={{fontSize:16,fontFamily:"'DM Serif Display',serif",color:P.text}}>{title}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:P.subtext,fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 6px",borderRadius:4}}>×</button>
+        </div>
+        {/* Scrollable body */}
+        <div style={{overflowY:"auto",padding:"20px 24px 24px",flex:1,fontSize:13,color:P.subtext,lineHeight:1.75}}>
+          {children}
         </div>
       </div>
-      <div
-        onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
-        onClick={() => fileInputRef.current.click()}
-        style={{
-          border: `2px dashed ${dragOver ? P.accent : P.border}`,
-          borderRadius: 16, padding: "32px 56px", cursor: "pointer",
-          background: dragOver ? "#1a1a2e" : P.panel, transition: "all 0.2s",
-        }}>
-        <input ref={fileInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => onUpload(e.target.files[0])} />
-        <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
-        <div style={{ fontSize: 14, color: P.accent, fontWeight: 600 }}>Drop CSV here or click to browse</div>
-        <div style={{ fontSize: 12, color: P.muted, marginTop: 4 }}>Google Form Responses export (.csv)</div>
+    </div>
+  );
+}
+
+// ─── Footer links (always visible) ───────────────────────────────────────────
+function FooterLinks() {
+  const [modal, setModal] = useState(null); // "about" | "privacy" | null
+
+  const linkStyle = {
+    background:"none",border:"none",cursor:"pointer",
+    fontSize:11,color:"#444460",fontFamily:"'DM Sans',sans-serif",
+    textDecoration:"underline",textDecorationColor:"#2a2a3e",
+    padding:0,transition:"color 0.15s",
+  };
+
+  const h = { fontSize:13, color:P.text, fontWeight:600, marginBottom:6, marginTop:20, display:"block" };
+  const p = { marginBottom:12, display:"block" };
+
+  return (
+    <>
+      <div style={{textAlign:"center",padding:"24px 0 16px",userSelect:"none"}}>
+        <button style={linkStyle} onMouseEnter={e=>e.target.style.color=P.subtext} onMouseLeave={e=>e.target.style.color="#444460"} onClick={()=>setModal("about")}>About</button>
+        <span style={{fontSize:11,color:"#2a2a3e",margin:"0 8px"}}>|</span>
+        <button style={linkStyle} onMouseEnter={e=>e.target.style.color=P.subtext} onMouseLeave={e=>e.target.style.color="#444460"} onClick={()=>setModal("privacy")}>Privacy &amp; Terms</button>
       </div>
+
+      {modal === "about" && (
+        <Modal title="About" onClose={()=>setModal(null)}>
+          <span style={p}>Your life, measured. Your patterns, revealed.</span>
+          <span style={h}>What is Teyeme?</span>
+          <span style={p}>This is a personal life tracking dashboard built to help you understand your own patterns over time. It visualizes data you've already been collecting — sleep, mood, activity, habits, and more — and turns it into charts, insights, and period-by-period comparisons.</span>
+          <span style={h}>How does it work?</span>
+          <span style={p}>This dashboard reads CSV exports from your Google Form life tracker. If you don't have one yet, download it! Each time you want to update your data, simply export your responses as a CSV and upload it here. New entries are automatically merged with your existing data — no duplicates, no manual editing required.</span>
+          <span style={h}>What can I track?</span>
+          <span style={p}>The dashboard covers six areas across dedicated tabs: an Overview with key wellness metrics, Sleep quality and trends, a full Wellness timeline (mood, energy, clarity, stress, productivity, hydration, screen time), Habit completion rates and streaks, Fitness activity including gym sessions and running, and a Period view for monthly and quarterly breakdowns with automatic insights and comparisons.</span>
+          <span style={h}>Who built this?</span>
+          <span style={p}>This is a personal project by Matthew Han inspired from a tracker he made in 2025. Teyeme is for individual use. It has no accounts, no backend, and no external services. Everything runs entirely in your browser.</span>
+          <span style={h}>Do I need an account?</span>
+          <span style={p}>No. There are no accounts, no sign-ups, and no logins. Just upload your CSV and your dashboard is ready immediately. Your data is stored locally in your browser using localStorage — it stays on your device. Completely private!</span>
+        </Modal>
+      )}
+
+      {modal === "privacy" && (
+        <Modal title="Privacy &amp; Terms of Use" onClose={()=>setModal(null)}>
+          <span style={h}>Your data stays on your device</span>
+          <span style={p}>This dashboard does not collect, transmit, or store any of your personal data on any server. All data you upload — including your CSV files and the records derived from them — is stored exclusively in your browser's localStorage. It never leaves your device.</span>
+          <span style={h}>No analytics or tracking</span>
+          <span style={p}>This application does not use cookies, analytics tools, advertising trackers, or any third-party tracking of any kind. There is no user profiling and no data sharing with any external parties.</span>
+          <span style={h}>Data persistence</span>
+          <span style={p}>Your data persists in your browser until you clear it manually using the "Clear all data" button, or until you clear your browser's site data. Clearing browser storage will permanently remove your stored data from this device. We recommend keeping your original CSV exports as a backup.</span>
+          <span style={h}>Device and browser scope</span>
+          <span style={p}>Because data is stored locally, it is specific to the browser and device you are using. If you switch browsers or devices, you will need to re-upload your CSV to restore your data.</span>
+          <span style={h}>Security</span>
+          <span style={p}>This application is a static, client-side web app with no backend. CSV files are parsed entirely in your browser and are never sent over a network. All numeric fields are parsed as numbers, free-text fields are allowlisted, and file uploads are limited to 10MB to prevent abuse. That said, we recommend not using this dashboard on shared or public computers, as localStorage contents may be accessible to others with access to the browser's developer tools.</span>
+          <span style={h}>Terms of Use</span>
+          <span style={p}>This tool is provided as-is for personal use. By using this application you agree that you are solely responsible for the data you upload and how you use the insights generated. The application makes no guarantees about the accuracy of derived statistics and is not a substitute for professional medical, fitness, or mental health advice.</span>
+          <span style={h}>Changes to this policy</span>
+          <span style={p}>As this is a personal project, this policy may be updated over time. Continued use of the application after any changes constitutes acceptance of the updated terms.</span>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// ─── Feature pill ─────────────────────────────────────────────────────────────
+function FeaturePill({ icon, label }) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",background:"#0d0d18",border:`1px solid ${P.border}`,borderRadius:999,fontSize:12,color:P.subtext}}>
+      <span style={{fontSize:15}}>{icon}</span>{label}
+    </div>
+  );
+}
+
+// ─── Landing / Empty State ────────────────────────────────────────────────────
+function EmptyState({onUpload,dragOver,onDragOver,onDragLeave,onDrop,fileInputRef}) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",paddingTop:40,paddingBottom:16,gap:0}}>
+
+      {/* ── Hero ── */}
+      <div style={{marginBottom:20}}>
+        <div style={{
+          display:"inline-block",fontSize:11,letterSpacing:3,textTransform:"uppercase",
+          color:P.accent,border:`1px solid ${P.border}`,borderRadius:999,
+          padding:"5px 14px",marginBottom:20,
+        }}>Personal Life Analytics</div>
+
+        <h2 style={{
+          fontSize:"clamp(28px,5vw,52px)",fontFamily:"'DM Serif Display',serif",fontWeight:400,
+          color:P.text,lineHeight:1.2,marginBottom:16,maxWidth:640,
+          background:`linear-gradient(135deg, ${P.text} 40%, ${P.accent})`,
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+        }}>
+          Teyeme
+        </h2>
+
+        <p style={{fontSize:15,color:P.subtext,maxWidth:480,lineHeight:1.7,margin:"0 auto 28px"}}>
+          Upload your Google Form CSV export and instantly visualize your sleep, mood, fitness, and habits — across any month, quarter, or the full year.
+        </p>
+      </div>
+
+      {/* ── Feature pills ── */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:36,maxWidth:560}}>
+        <FeaturePill icon="🌙" label="Sleep tracking"/>
+        <FeaturePill icon="😊" label="Mood & energy"/>
+        <FeaturePill icon="🏋️" label="Fitness & steps"/>
+        <FeaturePill icon="📅" label="Monthly insights"/>
+        <FeaturePill icon="📊" label="Comparisons"/>
+        <FeaturePill icon="🔒" label="100% private"/>
+      </div>
+
+      {/* ── Upload zone ── */}
+      <div onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave} onClick={()=>fileInputRef.current.click()}
+        style={{
+          border:`2px dashed ${dragOver?P.accent:P.border}`,borderRadius:16,
+          padding:"36px 64px",cursor:"pointer",
+          background:dragOver?"#1a1a2e":P.panel,
+          transition:"all 0.2s",marginBottom:14,
+          boxShadow:dragOver?`0 0 40px rgba(204,136,255,0.15)`:"none",
+        }}>
+        <input ref={fileInputRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>onUpload(e.target.files[0])}/>
+        <div style={{fontSize:36,marginBottom:10}}>📂</div>
+        <div style={{fontSize:15,color:P.accent,fontWeight:600,marginBottom:4}}>Drop your CSV here to get started</div>
+        <div style={{fontSize:12,color:P.muted}}>or click to browse · Google Form Responses export (.csv)</div>
+      </div>
+
+      {/* ── Form template CTA ── */}
+      <div style={{
+        marginTop: 20,
+        marginBottom: 30,
+        padding: "14px 24px",
+        background: "#0d0d18",
+        border: `1px solid ${P.border}`,
+        borderRadius: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        maxWidth: 480,
+        width: "100%",
+      }}>
+        <span style={{ fontSize: 22, flexShrink: 0 }}>📋</span>
+        <div style={{ flex: 1, textAlign: "left" }}>
+          <div style={{ fontSize: 13, color: P.text, fontWeight: 500, marginBottom: 2 }}>
+            Don't have a tracking form?
+          </div>
+          <div style={{ fontSize: 12, color: P.subtext, lineHeight: 1.5 }}>
+            Use the same Google Form this dashboard was built for.
+          </div>
+        </div>
+        <a
+          href="https://docs.google.com/forms/d/10Y-ASOlSA7VV95c0WbyZlSe3QSbOzAyeFHZ08xqUu5s/copy"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            background: P.accent,
+            color: "#0a0a0f",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 14px",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            textDecoration: "none",
+            flexShrink: 0,
+          }}
+        >
+          Make a copy →
+        </a>
+      </div>
+
+      <div style={{fontSize:12,color:"#333348",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:13}}>🔒</span> Your data never leaves this browser — no accounts, no servers, no tracking.
+      </div>
+      
     </div>
   );
 }
@@ -641,53 +821,33 @@ export default function App() {
 
       {/* Toast */}
       {toast && (
-        <div style={{
-          position: "fixed", top: 20, right: 20, zIndex: 999,
-          background: toast.type === "error" ? "#2a1a1a" : "#1a2a1a",
-          border: `1px solid ${toast.type === "error" ? P.coral : P.sage}`,
-          borderRadius: 10, padding: "10px 16px", fontSize: 13, color: P.text,
-          boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
-        }}>
+        <div style={{position:"fixed",top:20,right:20,zIndex:999,background:toast.type==="error"?"#2a1a1a":"#1a2a1a",border:`1px solid ${toast.type==="error"?P.coral:P.sage}`,borderRadius:10,padding:"10px 16px",fontSize:13,color:P.text,boxShadow:"0 4px 24px rgba(0,0,0,0.5)"}}>
           {toast.msg}
         </div>
       )}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:16}}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: 3, color: P.subtext, textTransform: "uppercase", marginBottom: 4 }}>Teyeme Tracker</div>
-          <h1 style={{ fontSize: 28, fontFamily: "'DM Serif Display',serif", fontWeight: 400, background: `linear-gradient(135deg, ${P.accent}, ${P.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            Your Year in Data
+          <div style={{fontSize:11,letterSpacing:3,color:P.subtext,textTransform:"uppercase",marginBottom:4}}>Your Year in Data</div>
+          <h1 style={{fontSize:28,fontFamily:"'DM Serif Display',serif",fontWeight:400,background:`linear-gradient(135deg,${P.accent},${P.teal})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+            Teyeme
           </h1>
-          {dateRange && (
-            <div style={{ fontSize: 12, color: P.subtext, marginTop: 4 }}>
-              {dateRange} · <span style={{ color: P.accent }}>{totalDays} days logged</span>
-            </div>
-          )}
+          {dateRange && <div style={{fontSize:12,color:P.subtext,marginTop:4}}>{dateRange} · <span style={{color:P.accent}}>{totalDays} days logged</span></div>}
         </div>
-
-        {/* Upload panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 230 }}>
-          <div
-            className="upload-zone"
-            onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
-            onClick={() => fileInputRef.current.click()}
-            style={{
-              border: `1.5px dashed ${dragOver ? P.accent : P.border}`,
-              borderRadius: 10, padding: "10px 16px", cursor: "pointer",
-              background: dragOver ? "#1a1a2e" : P.panel, textAlign: "center", transition: "all 0.2s",
-            }}>
-            <input ref={fileInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-            <div style={{ fontSize: 12, color: P.accent, fontWeight: 600 }}>📂 Upload CSV</div>
-            <div style={{ fontSize: 10, color: P.muted, marginTop: 2 }}>Drop or click · new months auto-merge</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:230}}>
+          <div className="upload-zone" onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave} onClick={()=>fileInputRef.current.click()}
+            style={{border:`1.5px dashed ${dragOver?P.accent:P.border}`,borderRadius:10,padding:"10px 16px",cursor:"pointer",background:dragOver?"#1a1a2e":P.panel,textAlign:"center",transition:"all 0.2s"}}>
+            <input ref={fileInputRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+            <div style={{fontSize:12,color:P.accent,fontWeight:600}}>📂 Upload CSV</div>
+            <div style={{fontSize:10,color:P.muted,marginTop:2}}>Drop or click · new months auto-merge</div>
           </div>
-
-          {uploadedFiles.length > 0 && (
-            <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 8, overflow: "hidden" }}>
-              {uploadedFiles.map((f, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", borderBottom: i < uploadedFiles.length - 1 ? `1px solid ${P.border}` : "none", fontSize: 11 }}>
-                  <span style={{ color: P.sage }}>✓ {f.name.length > 24 ? f.name.slice(0, 24) + "…" : f.name}</span>
-                  <span style={{ color: P.muted, whiteSpace: "nowrap", marginLeft: 8 }}>{f.rows} rows</span>
+          {uploadedFiles.length>0 && (
+            <div style={{background:P.panel,border:`1px solid ${P.border}`,borderRadius:8,overflow:"hidden"}}>
+              {uploadedFiles.map((f,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 12px",borderBottom:i<uploadedFiles.length-1?`1px solid ${P.border}`:"none",fontSize:11}}>
+                  <span style={{color:P.sage}}>✓ {f.name.length>24?f.name.slice(0,24)+"…":f.name}</span>
+                  <span style={{color:P.muted,whiteSpace:"nowrap",marginLeft:8}}>{f.rows} rows</span>
                 </div>
               ))}
             </div>
@@ -703,7 +863,9 @@ export default function App() {
 
       {/* Empty state or dashboard */}
       {totalDays === 0 ? (
+        <>
         <EmptyState onUpload={handleFile} dragOver={dragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} fileInputRef={fileInputRef} />
+        </>
       ) : (
         <>
           {/* Tabs */}
@@ -993,6 +1155,8 @@ export default function App() {
           </div>
         </>
       )}
+
+      <FooterLinks/>
     </div>
   );
 }
