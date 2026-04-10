@@ -35,6 +35,46 @@ const storage = {
   },
 };
 
+// ─── Analytics ───────────────────────────────────────────────────────────────
+// Generates or retrieves a persistent anonymous visitor ID stored in localStorage.
+// This is never sent anywhere except your own /api/track endpoint.
+function getVisitorId() {
+  const KEY = "life-tracker-vid";
+  try {
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      // crypto.randomUUID is available in all modern browsers
+      id = crypto.randomUUID();
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+// Cookie helpers — used to detect return visits (not first-time loads)
+function getCookie(name) {
+  return document.cookie.split("; ").find(r => r.startsWith(name + "="))?.split("=")[1] || null;
+}
+function setCookie(name, value, days) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Strict`;
+}
+
+// Fire-and-forget event tracker — never throws, never blocks the UI
+async function track(event, extra = {}) {
+  try {
+    await fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, ...extra }),
+    });
+  } catch {
+    // Tracking is best-effort — silently swallow all errors
+  }
+}
+
 // ─── CSV Parsers ─────────────────────────────────────────────────────────────
 
 function parseTimeHours(t) {
@@ -332,20 +372,20 @@ function FooterLinks() {
           <span style={h}>What can I track?</span>
           <span style={p}>The dashboard covers six areas across dedicated tabs: an Overview with key wellness metrics, Sleep quality and trends, a full Wellness timeline (mood, energy, clarity, stress, productivity, hydration, screen time), Habit completion rates and streaks, Fitness activity including gym sessions and running, and a Period view for monthly and quarterly breakdowns with automatic insights and comparisons.</span>
           <span style={h}>Who built this?</span>
-          <span style={p}>This is a personal project by Matthew Han inspired from a tracker he made in 2025. Teyeme is for individual use. It has no accounts, no backend, and no external services. Everything runs entirely in your browser.</span>
+          <span style={p}>This is a personal project by Matthew Han inspired from a tracker he made in 2025. Teyeme is for individual use. All analysis runs entirely in your browser.</span>
           <span style={h}>Do I need an account?</span>
-          <span style={p}>No. There are no accounts, no sign-ups, and no logins. Just upload your CSV and your dashboard is ready immediately. Your data is stored locally in your browser using localStorage — it stays on your device. Completely private!</span>
+          <span style={p}>No. There are no accounts, no sign-ups, and no logins. Just upload your CSV and your dashboard is ready immediately. Your CSV data is stored locally in your browser using localStorage — it stays on your device. Completely private!</span>
         </Modal>
       )}
 
       {modal === "privacy" && (
         <Modal title="Privacy &amp; Terms of Use" onClose={()=>setModal(null)}>
-          <span style={h}>Your data stays on your device</span>
-          <span style={p}>This dashboard does not collect, transmit, or store any of your personal data on any server. All data you upload — including your CSV files and the records derived from them — is stored exclusively in your browser's localStorage. It never leaves your device.</span>
-          <span style={h}>No analytics or tracking</span>
-          <span style={p}>This application does not use cookies, analytics tools, advertising trackers, or any third-party tracking of any kind. There is no user profiling and no data sharing with any external parties.</span>
+          <span style={h}>Your CSV data stays on your device</span>
+          <span style={p}>This dashboard does not collect, transmit, or store any of your personal CSV data on any server. All data you upload — including your CSV files and the records derived from them — is stored exclusively in your browser's localStorage. It never leaves your device.</span>
+          <span style={h}>Analytics and tracking</span>
+          <span style={p}>This application uses cookies in order to track frequency of use. Advertising trackers are not used. There is no user profiling and no data sharing with any external parties.</span>
           <span style={h}>Data persistence</span>
-          <span style={p}>Your data persists in your browser until you clear it manually using the "Clear all data" button, or until you clear your browser's site data. Clearing browser storage will permanently remove your stored data from this device. We recommend keeping your original CSV exports as a backup.</span>
+          <span style={p}>Your CSV data persists in your browser until you clear it manually using the "Clear all data" button, or until you clear your browser's site data. Clearing browser storage will permanently remove your stored data from this device. We recommend keeping your original CSV exports as a backup.</span>
           <span style={h}>Device and browser scope</span>
           <span style={p}>Because data is stored locally, it is specific to the browser and device you are using. If you switch browsers or devices, you will need to re-upload your CSV to restore your data.</span>
           <span style={h}>Security</span>
@@ -448,6 +488,7 @@ function EmptyState({onUpload,dragOver,onDragOver,onDragLeave,onDrop,fileInputRe
           href="https://docs.google.com/forms/d/10Y-ASOlSA7VV95c0WbyZlSe3QSbOzAyeFHZ08xqUu5s/copy"
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => track("form_copy")}
           style={{
             background: P.accent,
             color: "#0a0a0f",
@@ -719,6 +760,16 @@ export default function App() {
       setUploadedFiles(saved.files || []);
     }
     setLoading(false);
+
+    // Return visit detection — only fires if the user has been here before.
+    // We set a cookie on first load; if it already exists this is a return visit.
+    const COOKIE = "life-tracker-visited";
+    const isReturn = !!getCookie(COOKIE);
+    setCookie(COOKIE, "1", 365); // refresh expiry on every visit
+    if (isReturn) {
+      const visitor_id = getVisitorId();
+      track("return_visit", { visitor_id });
+    }
   }, []);
 
   // Persist whenever records/files change (after initial load)
@@ -755,6 +806,7 @@ export default function App() {
             : [...prev, entry];
         });
         showToast(`✅ Merged ${incoming.length} rows from "${file.name}"`);
+        track("csv_upload");
       } catch {
         showToast("⚠️ Failed to parse CSV — check the format", "error");
       }
