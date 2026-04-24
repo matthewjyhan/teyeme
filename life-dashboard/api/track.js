@@ -15,9 +15,11 @@ const ALLOWED_EVENTS = ["form_copy", "csv_upload", "return_visit"];
 
 // Minimal Upstash Redis REST client — no SDK required
 async function redis(command, ...args) {
-  const url   = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error("UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set");
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  if (!url || !token) {
+    throw new Error("UPSTASH_REDIS_REST_URL/KV_REST_API_URL and UPSTASH_REDIS_REST_TOKEN/KV_REST_API_TOKEN not set");
+  }
 
   const res = await fetch(
     `${url}/${[command, ...args.map(a => encodeURIComponent(a))].join("/")}`,

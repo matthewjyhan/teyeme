@@ -18,9 +18,11 @@
  */
 
 async function redis(command, ...args) {
-  const url   = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error("UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set");
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  if (!url || !token) {
+    throw new Error("UPSTASH_REDIS_REST_URL/KV_REST_API_URL and UPSTASH_REDIS_REST_TOKEN/KV_REST_API_TOKEN not set");
+  }
 
   const res = await fetch(
     `${url}/${[command, ...args.map(a => encodeURIComponent(a))].join("/")}`,
@@ -43,20 +45,40 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all counters in parallel
-    const [formCopies, csvUploads, returnVisits, uniqueReturnVisitors] = await Promise.all([
+    // Fetch all counters in parallel and tolerate partial failures.
+    const results = await Promise.allSettled([
       redis("GET", "count:form_copy"),
       redis("GET", "count:csv_upload"),
       redis("GET", "count:return_visit"),
       redis("GET", "count:unique_return_visitors"),
     ]);
 
+    const keys = [
+      "count:form_copy",
+      "count:csv_upload",
+      "count:return_visit",
+      "count:unique_return_visitors",
+    ];
+
+    const toInt = (result, keyName) => {
+      if (result.status === "fulfilled") {
+        return parseInt(result.value, 10) || 0;
+      }
+
+      console.error(`Upstash key read failed (${keyName}):`, result.reason?.message || result.reason);
+      return 0;
+    };
+
+    const [formCopies, csvUploads, returnVisits, uniqueReturnVisitors] = results.map((result, i) =>
+      toInt(result, keys[i])
+    );
+
     return res.status(200).json({
-      form_copies:            parseInt(formCopies)           || 0,
-      csv_uploads:            parseInt(csvUploads)           || 0,
-      return_visits:          parseInt(returnVisits)         || 0,
-      unique_return_visitors: parseInt(uniqueReturnVisitors) || 0,
-      generated_at:           new Date().toISOString(),
+      form_copies: formCopies,
+      csv_uploads: csvUploads,
+      return_visits: returnVisits,
+      unique_return_visitors: uniqueReturnVisitors,
+      generated_at: new Date().toISOString(),
     });
   } catch (err) {
     console.error("Upstash error:", err.message);
