@@ -116,6 +116,10 @@ function parseCSV(csvText) {
       journal:      parseInt(obj["Did you journal today?"]) || 0,
       bed_made:     parseInt(obj["Did you make your bed?"]) || 0,
       social:       parseInt(obj["Did you upload to Social Media?"]) || 0,
+      nap:          parseInt(obj["Did you take/try to take a nap?"]) || 0,
+      git_commit:   parseInt(obj["Git commit?"]) || 0,
+      read:         parseInt(obj["Read?"]) || 0,
+      compliment:   parseInt(obj["Compliment someone?"]) || 0,
       gaming:       parseDuration(obj["Time playing video games:"]),
       ppl:          ["Push", "Pull", "Legs", ""].includes(obj["PPL?"] || "") ? (obj["PPL?"] || "") : "",
       run:          parseFloat(obj["Run distance (x.xx miles)"]) || 0,
@@ -218,6 +222,15 @@ function generateInsights(data) {
 
   const waterGoal = data.filter(d => d.water >= 2500).length;
   insights.push({ icon: "💧", color: "#4fd1c5", text: `Met hydration goal (2500mL) on ${waterGoal} of ${data.length} days` });
+
+  const totalCompliments = data.filter(d => d.compliment > 0).length;
+  insights.push({ icon: "💬", color: "#cc88ff", text: `Complimented others on ${totalCompliments} days — that's ${Math.round(totalCompliments / data.length * 100)}% of days` });
+
+  const totalReads = data.filter(d => d.read > 0).length;
+  insights.push({ icon: "📖", color: "#6bcb77", text: `Read something substantial on ${totalReads} days` });
+
+  const totalCommitDays = data.filter(d => d.git_commit > 0).length;
+  insights.push({ icon: "💻", color: "#f5c842", text: `Commmitted to GitHub on ${totalCommitDays} of ${data.length} days` });
 
   return insights;
 }
@@ -515,6 +528,7 @@ function EmptyState({onUpload,dragOver,onDragOver,onDragLeave,onDrop,fileInputRe
   );
 }
 
+// Period tab
 function PeriodTab({ allTime }) {
   const [mode, setMode] = useState("month");
   const [selected, setSelected] = useState(null);
@@ -735,6 +749,10 @@ function PeriodTab({ allTime }) {
             <HabitRow label="leetcode" data={currData} color={P.sage} />
             <HabitRow label="active" data={currData} color={P.coral} />
             <HabitRow label="social" data={currData} color="#a78bfa" />
+            <HabitRow label="nap" data={currData} color={P.gold} />
+            <HabitRow label="git_commit" data={currData} color={P.teal} />
+            <HabitRow label="read" data={currData} color={P.accent} />
+            <HabitRow label="compliment" data={currData} color={P.sage} />
           </div>
         </>
       )}
@@ -1101,6 +1119,10 @@ export default function App() {
                 <HabitRow label="leetcode" data={allTime} color={P.sage} />
                 <HabitRow label="active" data={allTime} color={P.coral} />
                 <HabitRow label="social" data={allTime} color="#a78bfa" />
+                <HabitRow label="nap" data={allTime} color={P.gold} />
+                <HabitRow label="git_commit" data={allTime} color={P.teal} />
+                <HabitRow label="read" data={allTime} color={P.accent} />
+                <HabitRow label="compliment" data={allTime} color={P.sage} />
               </div>
               <div style={{ background: P.panel, border: `1px solid ${P.border}`, borderRadius: 12, padding: 20 }}>
                 <div style={{ fontSize: 11, letterSpacing: 2, color: P.subtext, textTransform: "uppercase", marginBottom: 16 }}>Activity Heatmap</div>
